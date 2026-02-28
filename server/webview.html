@@ -44,7 +44,6 @@
     }
     
     .header-btn:hover { background: #1a4a7a; }
-    .header-btn.active { background: #e94560; }
     
     #status { font-size: 12px; color: #888; }
     #status.connected { color: #4ade80; }
@@ -164,7 +163,6 @@
     <h1>🖥️ Pixel Agents - OpenCode</h1>
     <div class="header-controls">
       <button id="toggle-sound" class="muted">🔇</button>
-      <button class="header-btn" id="edit-layout">🏠 Edit Office</button>
       <span id="status" class="disconnected">● Disconnected</span>
     </div>
   </div>
@@ -194,7 +192,6 @@
       gain.connect(audioCtx.destination);
       
       if (type === 'done') {
-        // Happy chime
         osc.frequency.setValueAtTime(523, audioCtx.currentTime);
         osc.frequency.setValueAtTime(659, audioCtx.currentTime + 0.1);
         osc.frequency.setValueAtTime(784, audioCtx.currentTime + 0.2);
@@ -203,7 +200,6 @@
         osc.start(audioCtx.currentTime);
         osc.stop(audioCtx.currentTime + 0.4);
       } else if (type === 'thinking') {
-        // Soft ping
         osc.frequency.setValueAtTime(440, audioCtx.currentTime);
         gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
@@ -233,31 +229,48 @@
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
 
-    // Character colors (6 diverse characters like original)
-    const CHARACTER_COLORS = ['#e94560', '#4ade80', '#60a5fa', '#fbbf24', '#a855f7', '#f472b6'];
-    const CHARACTER_SKINTONES = ['#ffccaa', '#d4a574', '#8d5524', '#c68642', '#ffdbac', '#e0ac69'];
+    // Character sprite images (6 characters)
+    const characterSprites = [];
+    let spritesLoaded = false;
     
+    // Load character sprites
+    function loadSprites() {
+      let loaded = 0;
+      for (let i = 0; i < 6; i++) {
+        const img = new Image();
+        img.onload = () => {
+          loaded++;
+          if (loaded === 6) {
+            spritesLoaded = true;
+            console.log('[Pixel Agents] All sprites loaded!');
+          }
+        };
+        img.onerror = () => {
+          console.error('[Pixel Agents] Failed to load sprite:', i);
+          loaded++; // Continue anyway
+        };
+        img.src = `/assets/char_${i}.png`;
+        characterSprites.push(img);
+      }
+    }
+    loadSprites();
+
     // Agent state
     let agents = [
       {
         id: 1,
         x: 0,
         y: 0,
-        state: 'idle', // idle, thinking, working, waiting
-        color: CHARACTER_COLORS[0],
-        skinColor: CHARACTER_SKINTONES[0],
+        state: 'idle',
+        paletteIndex: 0,
         toolStatus: '',
-        isWaiting: false,
-        name: 'Agent 1'
+        isWaiting: false
       }
     ];
     let eventSource = null;
-    let lastToolStatus = '';
-
-    // Animation frame counter for blinking/waving
     let frameCount = 0;
 
-    // Resize canvas to fill office
+    // Resize canvas
     function resizeCanvas() {
       const office = document.getElementById('office');
       const rect = office.getBoundingClientRect();
@@ -265,64 +278,16 @@
       canvas.height = rect.height;
     }
 
-    // Draw character at position
-    function drawCharacter(ctx, x, y, agent, w, h) {
-      const color = agent.color;
-      const skin = agent.skinColor;
-      const centerX = w * x;
-      const centerY = h * y;
-      
-      // Animation bob
-      const bob = Math.sin(frameCount * 0.1) * 2;
-      
-      // Body
-      ctx.fillStyle = color;
-      ctx.fillRect(centerX - 20, centerY + 10 + bob, 40, 35);
-      
-      // Head
-      ctx.fillStyle = skin;
-      ctx.fillRect(centerX - 15, centerY - 20 + bob, 30, 30);
-      
-      // Hair
-      ctx.fillStyle = '#4a3728';
-      ctx.fillRect(centerX - 17, centerY - 25 + bob, 34, 12);
-      
-      // Eyes - with blink animation
-      const isBlinking = frameCount % 180 < 5;
-      ctx.fillStyle = '#000';
-      
-      if (agent.isWaiting) {
-        // Sleeping - ZZZ
-        ctx.font = '10px monospace';
-        ctx.fillText('💤', centerX + 15, centerY - 25 + bob);
-      } else if (agent.state === 'thinking' || agent.toolStatus?.includes('Thinking')) {
-        // Thinking - spiral eyes
-        ctx.font = '14px monospace';
-        ctx.fillText('🌀', centerX - 8, centerY - 5 + bob);
-      } else if (agent.state === 'working' || agent.toolStatus) {
-        // Working - looking at screen
-        ctx.fillRect(centerX - 10, centerY - 8 + bob, 6, 4);
-        ctx.fillRect(centerX + 4, centerY - 8 + bob, 6, 4);
-      } else if (isBlinking) {
-        // Blink
-        ctx.fillRect(centerX - 10, centerY - 5 + bob, 6, 2);
-        ctx.fillRect(centerX + 4, centerY - 5 + bob, 6, 2);
-      } else {
-        // Normal
-        ctx.fillRect(centerX - 10, centerY - 8 + bob, 6, 6);
-        ctx.fillRect(centerX + 4, centerY - 8 + bob, 6, 6);
-      }
-      
-      // Tool status text above head
-      if (agent.toolStatus) {
-        ctx.fillStyle = '#fff';
-        ctx.font = '11px monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(agent.toolStatus.slice(0, 25), centerX, centerY - 40 + bob);
-      }
+    // Draw sprite at position (using first frame as placeholder)
+    function drawCharacterSprite(ctx, img, x, y, scale = 4) {
+      if (!img || !img.complete) return;
+      const w = img.width;
+      const h = img.height;
+      // Draw at scale
+      ctx.drawImage(img, x, y, w * scale, h * scale);
     }
 
-    // Draw the office
+    // Draw the office with furniture
     function render() {
       frameCount++;
       const w = canvas.width;
@@ -332,7 +297,7 @@
       ctx.fillStyle = '#2d2d44';
       ctx.fillRect(0, 0, w, h);
       
-      // Checkered floor tiles
+      // Checkered floor
       const tileSize = 50;
       for (let x = 0; x < w; x += tileSize) {
         for (let y = h * 0.4; y < h; y += tileSize) {
@@ -351,25 +316,25 @@
       ctx.fillStyle = '#e94560';
       ctx.fillRect(0, h * 0.38, w, 6);
       
-      // Wall decorations - frame
+      // Wall decorations - framed picture
       ctx.fillStyle = '#4a3728';
-      ctx.fillRect(50, h * 0.15, 100, 80);
+      ctx.fillRect(50, h * 0.15, 120, 90);
       ctx.fillStyle = '#1a5';
-      ctx.fillRect(55, h * 0.17, 90, 60);
-      // Landscape in frame
+      ctx.fillRect(55, h * 0.17, 110, 70);
+      // Landscape
       ctx.fillStyle = '#22c55e';
-      ctx.fillRect(55, h * 0.35, 90, 30);
+      ctx.fillRect(55, h * 0.40, 110, 35);
       ctx.fillStyle = '#60a5fa';
-      ctx.fillRect(55, h * 0.17, 90, 20);
+      ctx.fillRect(55, h * 0.17, 110, 25);
       
-      // Shelf with books
+      // Bookshelf
       ctx.fillStyle = '#4a3728';
-      ctx.fillRect(200, h * 0.25, 200, 10);
+      ctx.fillRect(200, h * 0.25, 200, 12);
       // Books
       const bookColors = ['#e94560', '#4ade80', '#60a5fa', '#fbbf24', '#a855f7'];
       for (let i = 0; i < 5; i++) {
         ctx.fillStyle = bookColors[i];
-        ctx.fillRect(205 + i * 18, h * 0.16, 14, 20 + (i % 3) * 5);
+        ctx.fillRect(205 + i * 20, h * 0.16, 16, 22 + (i % 3) * 5);
       }
       
       // Plant
@@ -380,25 +345,25 @@
       ctx.fillStyle = '#8b4513';
       ctx.fillRect(w - 115, h * 0.38, 30, 45);
       
-      // Desk (center)
+      // Desk
       const deskX = w/2 - 120;
       const deskY = h * 0.65;
       ctx.fillStyle = '#5c4433';
-      ctx.fillRect(deskX, deskY, 240, 15); // top
-      ctx.fillRect(deskX, deskY + 15, 240, 60); // front panel
+      ctx.fillRect(deskX, deskY, 240, 15);
+      ctx.fillRect(deskX, deskY + 15, 240, 60);
       
       // Monitor
       ctx.fillStyle = '#333';
       ctx.fillRect(deskX + 60, deskY - 50, 120, 70);
       ctx.fillStyle = '#1a5';
       ctx.fillRect(deskX + 65, deskY - 45, 110, 55);
-      // Code on screen
+      // Code
       ctx.fillStyle = '#0f0';
       ctx.font = '8px monospace';
       ctx.fillText('function() {', deskX + 68, deskY - 30);
-      ctx.fillText('  return true;', deskX + 68, deskX + 75 ? deskY - 20 : deskY - 20);
+      ctx.fillText('  return true;', deskX + 68, deskY - 18);
       ctx.fillStyle = '#444';
-      ctx.fillRect(deskX + 100, deskY - 10, 40, 25); // stand
+      ctx.fillRect(deskX + 100, deskY - 10, 40, 25);
       
       // Keyboard
       ctx.fillStyle = '#444';
@@ -407,8 +372,6 @@
       for (let i = 0; i < 8; i++) {
         ctx.fillRect(deskX + 57 + i * 10, deskY + 22, 8, 6);
       }
-      
-      // Mouse
       ctx.fillStyle = '#555';
       ctx.fillRect(deskX + 145, deskY + 22, 15, 20);
       
@@ -421,18 +384,42 @@
       const chairX = w/2 - 40;
       const chairY = deskY + 70;
       ctx.fillStyle = '#e94560';
-      ctx.fillRect(chairX, chairY, 80, 15); // seat
-      ctx.fillRect(chairX + 30, chairY - 40, 20, 50); // back
+      ctx.fillRect(chairX, chairY, 80, 15);
+      ctx.fillRect(chairX + 30, chairY - 40, 20, 50);
       ctx.fillStyle = '#333';
-      ctx.fillRect(chairX + 35, chairY + 15, 10, 35); // stem
-      ctx.fillRect(chairX + 15, chairY + 50, 50, 10); // base
+      ctx.fillRect(chairX + 35, chairY + 15, 10, 35);
+      ctx.fillRect(chairX + 15, chairY + 50, 50, 10);
       
-      // Draw all agents
-      agents.forEach(agent => {
-        const agentX = (chairX + 20) / w;
-        const agentY = (chairY - 10) / h;
-        drawCharacter(ctx, agentX, agentY, agent, w, h);
-      });
+      // Draw character sprite
+      const agent = agents[0];
+      const sprite = characterSprites[agent.paletteIndex];
+      if (spritesLoaded && sprite && sprite.complete) {
+        // Position at desk
+        const charX = chairX + 10 - (sprite.width * 2);
+        const charY = chairY - 60 - (sprite.height * 2);
+        
+        // Draw the sprite scaled
+        ctx.drawImage(sprite, charX, charY, sprite.width * 4, sprite.height * 4);
+        
+        // Tool status text
+        if (agent.toolStatus) {
+          ctx.fillStyle = '#fff';
+          ctx.font = 'bold 14px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(agent.toolStatus.slice(0, 30), charX + sprite.width * 2, charY - 10);
+        }
+      } else {
+        // Fallback: draw simple character
+        const charX = w/2 - 20;
+        const charY = chairY - 10;
+        ctx.fillStyle = agent.state === 'idle' ? '#e94560' : '#4ade80';
+        ctx.fillRect(charX, charY, 40, 50);
+        ctx.fillStyle = '#ffccaa';
+        ctx.fillRect(charX + 5, charY - 20, 30, 25);
+        ctx.fillStyle = '#000';
+        ctx.fillRect(charX + 8, charY - 12, 5, 5);
+        ctx.fillRect(charX + 25, charY - 12, 5, 5);
+      }
       
       requestAnimationFrame(render);
     }
@@ -444,34 +431,20 @@
       if (agent.isWaiting) {
         speechBubble.textContent = '💭 Waiting for you...';
         speechBubble.className = 'speech-bubble visible waiting';
-        
-        // Position above agent
-        const w = canvas.width;
-        const h = canvas.height;
-        speechBubble.style.left = (w/2 - 125) + 'px';
-        speechBubble.style.top = (h * 0.25) + 'px';
-        
       } else if (agent.state === 'thinking' && agent.toolStatus) {
         speechBubble.textContent = '🤔 ' + agent.toolStatus;
         speechBubble.className = 'speech-bubble visible thinking';
-        
-        const w = canvas.width;
-        const h = canvas.height;
-        speechBubble.style.left = (w/2 - 125) + 'px';
-        speechBubble.style.top = (h * 0.25) + 'px';
-        
       } else if (agent.toolStatus && agent.state === 'working') {
         speechBubble.textContent = '⚡ ' + agent.toolStatus;
         speechBubble.className = 'speech-bubble visible tool';
-        
-        const w = canvas.width;
-        const h = canvas.height;
-        speechBubble.style.left = (w/2 - 125) + 'px';
-        speechBubble.style.top = (h * 0.25) + 'px';
-        
       } else {
         speechBubble.className = 'speech-bubble';
       }
+      
+      // Position
+      const w = canvas.width;
+      speechBubble.style.left = (w/2 - 125) + 'px';
+      speechBubble.style.top = (h = canvas.height * 0.15) + 'px';
       
       // Tool overlay
       if (agent.toolStatus) {
