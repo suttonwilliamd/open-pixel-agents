@@ -1,0 +1,63 @@
+// ── Timing (ms) ──────────────────────────────────────────────
+export const JSONL_POLL_INTERVAL_MS = 1000;
+export const FILE_WATCHER_POLL_INTERVAL_MS = 1000;
+export const DB_POLL_INTERVAL_MS = 1000;
+export const PROJECT_SCAN_INTERVAL_MS = 1000;
+export const TOOL_DONE_DELAY_MS = 300;
+export const PERMISSION_TIMER_DELAY_MS = 7000;
+export const TEXT_IDLE_DELAY_MS = 5000;
+
+// ── OpenCode Paths ───────────────────────────────────────────
+export const OPENCODE_DB_PATH = '.local/share/opencode/opencode.db';
+export const OPENCODE_SESSIONS_DIR = '.local/share/opencode';
+
+// ── Display Truncation ──────────────────────────────────────
+export const BASH_COMMAND_DISPLAY_MAX_LENGTH = 30;
+export const TASK_DESCRIPTION_DISPLAY_MAX_LENGTH = 40;
+
+// ── PNG / Asset Parsing ─────────────────────────────────────
+export const PNG_ALPHA_THRESHOLD = 128;
+export const WALL_PIECE_WIDTH = 16;
+export const WALL_PIECE_HEIGHT = 32;
+export const WALL_GRID_COLS = 4;
+export const WALL_BITMASK_COUNT = 16;
+export const FLOOR_PATTERN_COUNT = 7;
+export const FLOOR_TILE_SIZE = 16;
+export const CHARACTER_DIRECTIONS = ['down', 'up', 'right'] as const;
+export const CHAR_FRAME_W = 16;
+export const CHAR_FRAME_H = 32;
+export const CHAR_FRAMES_PER_ROW = 7;
+export const CHAR_COUNT = 6;
+
+// ── User-Level Layout Persistence ─────────────────────────────
+export const LAYOUT_FILE_DIR = '.pixel-agents';
+export const LAYOUT_FILE_NAME = 'layout.json';
+export const LAYOUT_FILE_POLL_INTERVAL_MS = 2000;
+
+// ── Settings Persistence ────────────────────────────────────
+export const GLOBAL_KEY_SOUND_ENABLED = 'pixel-agents.soundEnabled';
+
+// ── VS Code Identifiers ─────────────────────────────────────
+export const VIEW_ID = 'pixel-agents-opencode.panelView';
+export const COMMAND_SHOW_PANEL = 'pixel-agents-opencode.showPanel';
+export const COMMAND_EXPORT_DEFAULT_LAYOUT = 'pixel-agents-opencode.exportDefaultLayout';
+export const WORKSPACE_KEY_AGENTS = 'pixel-agents-opencode.agents';
+export const WORKSPACE_KEY_AGENT_SEATS = 'pixel-agents-opencode.agentSeats';
+export const WORKSPACE_KEY_LAYOUT = 'pixel-agents-opencode.layout';
+export const TERMINAL_NAME_PREFIX = 'OpenCode';
+
+// ── OpenCode Tool Names ──────────────────────────────────────
+export const OPENCODE_TOOLS = {
+	glob: 'glob',
+	grep: 'grep',
+	ls: 'ls',
+	view: 'view',
+	write: 'write',
+	edit: 'edit',
+	patch: 'patch',
+	bash: 'bash',
+	fetch: 'fetch',
+	sourcegraph: 'sourcegraph',
+	agent: 'agent',
+	diagnostics: 'diagnostics',
+} as const;
