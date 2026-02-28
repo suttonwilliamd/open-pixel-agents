@@ -1,78 +1,92 @@
 # Pixel Agents - OpenCode Edition
 
-A VS Code extension that turns your OpenCode AI coding agents into animated pixel art characters in a virtual office.
+Pixel art office where your OpenCode agents come to life as animated characters.
 
-This is a fork of [pixel-agents](https://github.com/pablodelucca/pixel-agents) adapted to work with [OpenCode](https://opencode.ai) instead of Claude Code.
+## ⚠️ Architecture Change!
 
-## Features
+This is now a **standalone server** that doesn't require VS Code. It connects directly to OpenCode via ACP (Agent Client Protocol).
 
-- One agent, one character — every OpenCode session gets its own animated character
-- Live activity tracking — characters animate based on what the agent is actually doing
-- Office layout editor — design your office with floors, walls, and furniture
-- Speech bubbles — visual indicators when an agent is waiting for input
-- Sound notifications — optional chime when an agent finishes its turn
-- Sub-agent visualization — Task tool sub-agents spawn as separate characters
-- Persistent layouts — your office design is saved and shared across VS Code windows
-
-## Requirements
-
-- VS Code 1.107.0 or later
-- [OpenCode CLI](https://opencode.ai) installed and configured
-
-## Installation
-
-### From Source
+## Quick Start
 
 ```bash
-git clone https://github.com/your-username/pixel-agents-opencode.git
-cd pixel-agents-opencode
+# Install dependencies
 npm install
-cd webview-ui && npm install && cd ..
-npm run build
+
+# Run in a project directory
+npm start /path/to/your/project
+
+# Or run in current directory
+npm start
 ```
 
-Then press F5 in VS Code to launch the Extension Development Host.
+Then open http://localhost:5173 in your browser.
 
 ## How It Works
 
-Instead of watching JSONL transcript files (like Claude Code), this version polls the OpenCode SQLite database to track agent activity:
+```
+┌─────────────────────┐      SSE       ┌─────────────────────┐
+│  Pixel Agents      │ ←─────────────→ │  OpenCode Server   │
+│  (webview)        │  real-time      │  (ACP)             │
+│                   │   events        │                    │
+└─────────────────────┘                └─────────────────────┘
+```
 
-1. **Database polling** — Watches `~/.local/share/opencode/opencode.db` for new messages
-2. **Message parsing** — Parses OpenCode's JSON message format to detect tools
-3. **Status mapping** — Maps OpenCode tools (`glob`, `grep`, `view`, `write`, `bash`, etc.) to character animations
+1. Server starts OpenCode in server mode (`opencode serve`)
+2. Creates a session and subscribes to SSE events
+3. When agent uses tools (bash, edit, write, etc.), webview updates character animation
 
-### Tool Mapping
+## Events Supported
 
-| OpenCode Tool | Character Animation |
-|---------------|-------------------|
-| `glob` | Searching files |
-| `grep` | Searching code |
-| `view` | Reading |
-| `edit` | Editing |
-| `write` | Writing |
-| `bash` | Running commands |
-| `fetch` | Fetching web |
-| `agent` | Subtask |
+| Event | Description |
+|-------|-------------|
+| `message.part.updated` (tool) | Tool starts/completes → character types |
+| `message.updated` (completed) | Turn ends → character waits |
 
-## Architecture
+## Tool Animations
 
-- **Extension**: TypeScript, VS Code Webview API, esbuild
-- **Webview**: React 19, TypeScript, Vite, Canvas 2D
-- **Backend**: Polls OpenCode SQLite database instead of file watching
+| Tool | Animation |
+|------|-----------|
+| glob | Searching files |
+| grep | Searching code |
+| view/read | Reading |
+| edit | Editing |
+| write | Writing |
+| bash | Running commands |
+| fetch | Fetching web |
+| agent | Subtask |
 
-## Differences from Claude Code Version
+## API
 
-| Feature | Claude Code | OpenCode |
-|---------|-------------|----------|
-| Session format | JSONL files | SQLite database |
-| Tracking method | File watcher | DB polling |
-| Terminal spawning | Yes | No (uses existing sessions) |
-| Tools | Claude-specific | OpenCode tools |
+### HTTP Endpoints
 
-## License
+- `GET /` - Serve webview
+- `GET /events` - SSE endpoint for real-time updates
 
-MIT License - See LICENSE file
+### Webview Messages (received)
 
-## Original Project
+```javascript
+{ type: "agentStatus", id: 1, status: "active" | "waiting" }
+{ type: "agentToolStart", id: 1, toolId: "xxx", status: "Running: git status" }
+{ type: "agentToolDone", id: 1, toolId: "xxx" }
+{ type: "agentToolsClear", id: 1 }
+```
 
-This is a fork of [pixel-agents](https://github.com/pablodelucca/pixel-agents) by [pablodelucca](https://github.com/pablodelucca), adapted for OpenCode.
+## Development
+
+```bash
+# Build the webview (or just edit webview.html directly)
+# The server serves webview.html directly
+
+# Run
+npm start /path/to/project
+```
+
+## Files
+
+- `server/index.js` - Main server (connects to OpenCode, streams SSE)
+- `server/webview.html` - Frontend (pixel office + canvas rendering)
+
+## Requirements
+
+- Node.js 18+
+- OpenCode CLI installed (`opencode` on PATH)
