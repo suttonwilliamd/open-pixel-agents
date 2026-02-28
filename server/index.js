@@ -1,33 +1,36 @@
 // OpenCode ACP Client for Pixel Agents
 // Connects to OpenCode server and streams events to the pixel office webview
 
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { createServer, type Server } from "node:http";
+const { spawn } = require("node:child_process");
+const { createServer } = require("node:http");
+const { readFileSync, existsSync } = require("node:fs");
+const { join, extname } = require("node:path");
 
 const OPENCODE_BIN = process.env.OPENCODE_BIN || "opencode";
 const DEFAULT_PORT = 5173;
 
 // Parse listening URL from OpenCode output
-function parseListeningUrl(text: string): string | null {
+function parseListeningUrl(text) {
   const m = text.match(/opencode server listening on (https?:\/\/[^\s]+)/i);
   return m ? m[1] : null;
 }
 
 // Start OpenCode server in a directory
-async function startOpenCodeServer(cwd: string): Promise<{ url: string; process: ChildProcessWithoutNullStreams }> {
+async function startOpenCodeServer(cwd) {
   console.error("[Pixel Agents] Starting OpenCode server in:", cwd);
 
   const child = spawn(OPENCODE_BIN, ["serve", "--hostname", "127.0.0.1", "--port", "0"], {
     cwd,
     env: { ...process.env, OPENCODE: "1" },
     stdio: ["pipe", "pipe", "pipe"],
+    shell: true
   });
 
-  let url: string | undefined;
+  let url = undefined;
   let stdoutData = "";
   let stderrData = "";
 
-  child.stdout.on("data", (chunk: Buffer) => {
+  child.stdout.on("data", (chunk) => {
     const text = chunk.toString("utf8");
     stdoutData += text;
     console.error("[Pixel Agents] opencode stdout:", text);
@@ -35,7 +38,7 @@ async function startOpenCodeServer(cwd: string): Promise<{ url: string; process:
     if (maybeUrl) url = maybeUrl;
   });
 
-  child.stderr.on("data", (chunk: Buffer) => {
+  child.stderr.on("data", (chunk) => {
     const text = chunk.toString("utf8");
     stderrData += text;
     console.error("[Pixel Agents] opencode stderr:", text);
@@ -58,14 +61,14 @@ async function startOpenCodeServer(cwd: string): Promise<{ url: string; process:
 }
 
 // Create a new session
-async function createSession(baseUrl: string): Promise<{ id: string }> {
+async function createSession(baseUrl) {
   const res = await fetch(`${baseUrl}/session`, { method: "POST", body: JSON.stringify({}) });
   if (!res.ok) throw new Error(`Failed to create session: ${res.status}`);
   return res.json();
 }
 
 // Subscribe to SSE events
-function sseSubscribe(baseUrl: string, onEvent: (event: any) => void): () => void {
+function sseSubscribe(baseUrl, onEvent) {
   const controller = new AbortController();
   
   (async () => {
@@ -111,18 +114,39 @@ function sseSubscribe(baseUrl: string, onEvent: (event: any) => void): () => voi
   return () => controller.abort();
 }
 
-// Send a message to a session
-async function sendMessage(baseUrl: string, sessionId: string, text: string): Promise<void> {
-  await fetch(`${baseUrl}/session/${sessionId}/message`, {
+// Send a message to a session - async style
+async function sendMessageAsync(baseUrl, sessionId, text, onEvent) {
+  console.error("[Pixel Agents] Sending message:", text);
+  
+  // Send the message - this starts processing but we get a message ID back
+  const body = {
+    parts: [{ type: "text", text: text }],
+    agent: "build"
+  };
+  
+  const res = await fetch(`${baseUrl}/session/${sessionId}/message`, {
     method: "POST",
-    body: JSON.stringify({
-      parts: [{ type: "text", text }]
-    })
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
   });
+  
+  if (!res.ok) {
+    const err = await res.text();
+    console.error("[Pixel Agents] Send error:", res.status, err);
+    return;
+  }
+  
+  const result = await res.json();
+  console.error("[Pixel Agents] Send result:", JSON.stringify(result));
+  
+  // The message was sent - events will come via SSE
+  // We just need to wait for completion
+  // For now, just mark as active
+  onEvent({ type: 'agentStatus', status: 'active' });
 }
 
 // Format tool for display
-function formatToolStatus(toolName: string, input: any): string {
+function formatToolStatus(toolName, input) {
   if (!input) return `Using ${toolName}`;
   
   switch (toolName) {
@@ -151,15 +175,17 @@ function formatToolStatus(toolName: string, input: any): string {
 
 // Main Pixel Agents server
 class PixelAgentsServer {
-  private httpServer: Server | null = null;
-  private opencodeProcess: ChildProcessWithoutNullStreams | null = null;
-  private opencodeUrl: string | null = null;
-  private sessionId: string | null = null;
-  private sseClose: (() => void) | null = null;
-  private wsClients: Set<any> = new Set();
-  private activeTools: Map<string, { tool: string; status: string; input?: any }> = new Map();
+  constructor() {
+    this.httpServer = null;
+    this.opencodeProcess = null;
+    this.opencodeUrl = null;
+    this.sessionId = null;
+    this.sseClose = null;
+    this.activeTools = new Map();
+    this.eventSource = null;
+  }
 
-  async start(cwd: string, port: number = DEFAULT_PORT): Promise<void> {
+  async start(cwd, port = DEFAULT_PORT) {
     // Start OpenCode server
     const { url, process } = await startOpenCodeServer(cwd);
     this.opencodeUrl = url;
@@ -179,12 +205,34 @@ class PixelAgentsServer {
     this.startHttpServer(port);
   }
 
-  private handleEvent(event: any): void {
-    // console.error("[Pixel Agents] Event:", JSON.stringify(event, null, 2));
+  handleEvent(event) {
+    // console.error("[Pixel Agents] Event received:", JSON.stringify(event));
 
+    // Track session status
+    if (event.type === "session.status") {
+      const status = event.properties?.status?.type;
+      if (status === "busy") {
+        this.broadcast({ type: "agentStatus", id: 1, status: "active" });
+      } else if (status === "idle") {
+        this.broadcast({ type: "agentStatus", id: 1, status: "waiting" });
+      }
+    }
+
+    // Handle message parts (reasoning, text, tool)
     if (event.type === "message.part.updated") {
       const part = event.properties?.part;
       if (!part) return;
+
+      // Reasoning = thinking
+      if (part.type === "reasoning") {
+        this.broadcast({ type: "agentThinking", id: 1, text: part.text?.slice(0, 100) });
+      }
+
+      // Text output
+      if (part.type === "text" && part.text) {
+        // First text part means agent is responding
+        this.broadcast({ type: "agentResponding", id: 1, text: part.text?.slice(0, 100) });
+      }
 
       // Tool activity
       if (part.type === "tool") {
@@ -200,23 +248,26 @@ class PixelAgentsServer {
             toolId: toolCallId,
             status: formatToolStatus(toolName, part.state?.input)
           });
-          this.broadcast({ type: "agentStatus", id: 1, status: "active" });
         } else if (state === "completed" || state === "error") {
           this.activeTools.delete(toolCallId);
-          this.broadcast({
-            type: "agentToolDone",
-            id: 1,
-            toolId: toolCallId
-          });
+          this.broadcast({ type: "agentToolDone", id: 1, toolId: toolCallId });
         }
+      }
+
+      // Step start/finish
+      if (part.type === "step-start") {
+        this.broadcast({ type: "agentStatus", id: 1, status: "active" });
+      }
+      if (part.type === "step-finish") {
+        this.broadcast({ type: "agentToolsClear", id: 1 });
       }
     }
 
+    // Handle message completion
     if (event.type === "message.updated") {
       const info = event.properties?.info;
       if (!info) return;
 
-      // Message completed - agent is waiting
       if (info.role === "assistant" && info.time?.completed) {
         this.activeTools.clear();
         this.broadcast({ type: "agentToolsClear", id: 1 });
@@ -225,18 +276,18 @@ class PixelAgentsServer {
     }
   }
 
-  private broadcast(message: any): void {
+  broadcast(message) {
     // Send to all connected webview clients
     const data = JSON.stringify(message);
-    for (const client of this.wsClients) {
+    if (this.eventSource) {
       try {
-        client.send(data);
+        this.eventSource.write(`data: ${data}\n\n`);
       } catch {}
     }
     console.error("[Pixel Agents] Broadcast:", message.type, message.status || "");
   }
 
-  private startHttpServer(port: number): void {
+  startHttpServer(port) {
     this.httpServer = createServer((req, res) => {
       // CORS headers
       res.setHeader("Access-Control-Allow-Origin", "*");
@@ -250,64 +301,94 @@ class PixelAgentsServer {
           "Connection": "keep-alive"
         });
 
+        this.eventSource = res;
+
         // Send initial connection message
         res.write("data: {\"type\":\"connected\"}\n\n");
 
         // Keep alive
         const keepAlive = setInterval(() => {
-          res.write(": keepalive\n\n");
+          try {
+            res.write(": keepalive\n\n");
+          } catch {
+            clearInterval(keepAlive);
+          }
         }, 30000);
 
-        req.on("close", () => clearInterval(keepAlive));
+        req.on("close", () => {
+          clearInterval(keepAlive);
+          this.eventSource = null;
+        });
         return;
       }
 
-      if (req.url === "/ws") {
-        // WebSocket upgrade (simple version - just use SSE for now)
-        res.writeHead(400, "Use /events SSE endpoint");
-        res.end();
+      // Serve static files from webview.html
+      let filePath = req.url === "/" ? "/webview.html" : req.url;
+      
+      const fs = require("node:fs");
+      const path = require("node:path");
+      
+      // Handle /prompt endpoint
+      if (req.url === "/prompt" && req.method === "POST") {
+        let body = "";
+        req.on("data", chunk => body += chunk);
+        req.on("end", () => {
+          try {
+            const { text } = JSON.parse(body);
+            // Send message and broadcast events as they come
+            sendMessageAsync(server.opencodeUrl, server.sessionId, text, (event) => {
+              server.broadcast(event);
+            });
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ ok: true, message: "Processing..." }));
+          } catch (err) {
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: err.message }));
+          }
+        });
+        return;
+      }
+      
+      filePath = path.join(__dirname, filePath);
+      
+      if (!existsSync(filePath)) {
+        res.writeHead(404);
+        res.end("Not found: " + filePath);
         return;
       }
 
-      // Serve static files from webview-ui/dist
-      const fs = require("fs");
-      const path = require("path");
-      
-      let filePath = req.url === "/" ? "/index.html" : req.url!;
-      filePath = path.join(__dirname, "webview-ui", "dist", filePath);
-      
-      const ext = path.extname(filePath);
-      const contentTypes: Record<string, string> = {
+      const ext = extname(filePath);
+      const contentTypes = {
         ".html": "text/html",
         ".js": "application/javascript",
         ".css": "text/css",
         ".png": "image/png",
-        ".json": "application/json",
+        ".json": "application/json"
       };
 
-      fs.readFile(filePath, (err: any, data: Buffer) => {
-        if (err) {
-          res.writeHead(404);
-          res.end("Not found");
-          return;
-        }
+      try {
+        const data = readFileSync(filePath);
         res.writeHead(200, { "Content-Type": contentTypes[ext] || "text/plain" });
         res.end(data);
-      });
+      } catch (err) {
+        res.writeHead(500);
+        res.end(err.message);
+      }
     });
 
     this.httpServer.listen(port, () => {
       console.error(`[Pixel Agents] Server running at http://localhost:${port}`);
+      console.error(`[Pixel Agents] Open this URL in your browser!`);
     });
   }
 
-  async stop(): Promise<void> {
+  async stop() {
     if (this.sseClose) this.sseClose();
     if (this.opencodeProcess) this.opencodeProcess.kill();
     if (this.httpServer) this.httpServer.close();
   }
 
-  sendMessage(text: string): void {
+  sendMessage(text) {
     if (this.opencodeUrl && this.sessionId) {
       sendMessage(this.opencodeUrl, this.sessionId, text);
     }

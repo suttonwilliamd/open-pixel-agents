@@ -11,14 +11,9 @@
       font-family: 'Courier New', monospace;
       background: #1a1a2e;
       color: #eee;
-      overflow: hidden;
       height: 100vh;
-    }
-    
-    #app {
       display: flex;
       flex-direction: column;
-      height: 100vh;
     }
     
     #header {
@@ -30,29 +25,36 @@
       align-items: center;
     }
     
-    #header h1 {
-      font-size: 16px;
-      color: #e94560;
+    #header h1 { font-size: 16px; color: #e94560; }
+    
+    .header-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
     }
     
-    #status {
+    .header-btn {
+      background: #0f3460;
+      color: #eee;
+      border: none;
+      padding: 5px 12px;
+      cursor: pointer;
       font-size: 12px;
-      color: #888;
+      border-radius: 4px;
     }
     
+    .header-btn:hover { background: #1a4a7a; }
+    .header-btn.active { background: #e94560; }
+    
+    #status { font-size: 12px; color: #888; }
     #status.connected { color: #4ade80; }
     #status.disconnected { color: #ef4444; }
     
     #office {
       flex: 1;
+      background: #2d2d44;
       position: relative;
-      background: #0f0f1a;
       overflow: hidden;
-    }
-    
-    canvas {
-      display: block;
-      image-rendering: pixelated;
     }
     
     #tool-overlay {
@@ -60,14 +62,53 @@
       bottom: 20px;
       left: 50%;
       transform: translateX(-50%);
-      background: rgba(0,0,0,0.8);
-      padding: 8px 16px;
-      border-radius: 4px;
-      font-size: 12px;
+      background: rgba(0,0,0,0.85);
+      padding: 10px 20px;
+      border-radius: 6px;
+      font-size: 13px;
       display: none;
+      border: 2px solid #e94560;
+      box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3);
+      max-width: 80%;
     }
     
     #tool-overlay.visible { display: block; }
+    
+    .speech-bubble {
+      position: absolute;
+      background: white;
+      color: #1a1a2e;
+      padding: 12px 18px;
+      border-radius: 12px;
+      font-size: 12px;
+      display: none;
+      border: 3px solid #e94560;
+      max-width: 250px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+      z-index: 100;
+    }
+    
+    .speech-bubble.visible { display: block; }
+    
+    .speech-bubble::after {
+      content: '';
+      position: absolute;
+      bottom: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      border-left: 12px solid transparent;
+      border-right: 12px solid transparent;
+      border-top: 12px solid #e94560;
+    }
+    
+    .speech-bubble.thinking { border-color: #fbbf24; }
+    .speech-bubble.thinking::after { border-top-color: #fbbf24; }
+    
+    .speech-bubble.waiting { border-color: #4ade80; }
+    .speech-bubble.waiting::after { border-top-color: #4ade80; }
+    
+    .speech-bubble.tool { border-color: #60a5fa; }
+    .speech-bubble.tool::after { border-top-color: #60a5fa; }
     
     #input-area {
       background: #16213e;
@@ -82,9 +123,10 @@
       background: #0f0f1a;
       border: 1px solid #0f3460;
       color: #eee;
-      padding: 8px 12px;
+      padding: 10px 14px;
       font-family: inherit;
       font-size: 14px;
+      border-radius: 4px;
     }
     
     #input-area input:focus {
@@ -96,246 +138,440 @@
       background: #e94560;
       color: white;
       border: none;
-      padding: 8px 20px;
+      padding: 10px 24px;
       cursor: pointer;
       font-family: inherit;
-    }
-    
-    #input-area button:hover {
-      background: #ff6b6b;
-    }
-    
-    #agent-bubble {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      background: white;
-      color: black;
-      padding: 8px 12px;
+      font-size: 14px;
       border-radius: 4px;
-      font-size: 12px;
-      display: none;
-      white-space: nowrap;
     }
     
-    #agent-bubble.visible { display: block; }
+    #input-area button:hover { background: #ff6b6b; }
     
-    #agent-bubble::after {
-      content: '';
-      position: absolute;
-      bottom: -6px;
-      left: 50%;
-      transform: translateX(-50%);
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 6px solid white;
+    #toggle-sound {
+      font-size: 18px;
+      background: #0f3460;
+      border: none;
+      padding: 6px 12px;
+      cursor: pointer;
+      border-radius: 4px;
     }
+    
+    #toggle-sound.muted { opacity: 0.5; }
   </style>
 </head>
 <body>
-  <div id="app">
-    <div id="header">
-      <h1>🖥️ Pixel Agents - OpenCode</h1>
+  <div id="header">
+    <h1>🖥️ Pixel Agents - OpenCode</h1>
+    <div class="header-controls">
+      <button id="toggle-sound" class="muted">🔇</button>
+      <button class="header-btn" id="edit-layout">🏠 Edit Office</button>
       <span id="status" class="disconnected">● Disconnected</span>
     </div>
-    
-    <div id="office">
-      <canvas id="canvas"></canvas>
-      <div id="agent-bubble"></div>
-      <div id="tool-overlay"></div>
-    </div>
-    
-    <div id="input-area">
-      <input type="text" id="prompt" placeholder="Ask OpenCode something..." />
-      <button id="send">Send</button>
-    </div>
+  </div>
+  
+  <div id="office">
+    <canvas id="canvas"></canvas>
+    <div id="speech-bubble" class="speech-bubble"></div>
+    <div id="tool-overlay"></div>
+  </div>
+  
+  <div id="input-area">
+    <input type="text" id="prompt" placeholder="Ask OpenCode something..." />
+    <button id="send">Send</button>
   </div>
 
   <script>
-    // Simple SSE connection
+    // Audio context for sound notifications
+    let audioCtx = null;
+    let soundEnabled = false;
+    
+    function playSound(type) {
+      if (!soundEnabled || !audioCtx) return;
+      
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      
+      if (type === 'done') {
+        // Happy chime
+        osc.frequency.setValueAtTime(523, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(659, audioCtx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(784, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.4);
+      } else if (type === 'thinking') {
+        // Soft ping
+        osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc.start(audioCtx.currentTime);
+        osc.stop(audioCtx.currentTime + 0.2);
+      }
+    }
+    
+    // Toggle sound
+    const soundBtn = document.getElementById('toggle-sound');
+    soundBtn.addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      soundBtn.textContent = soundEnabled ? '🔊' : '🔇';
+      soundBtn.classList.toggle('muted', !soundEnabled);
+      if (soundEnabled && !audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+    });
+    
+    console.log('[Pixel Agents] Script starting...');
+    
     const statusEl = document.getElementById('status');
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const toolOverlay = document.getElementById('tool-overlay');
-    const agentBubble = document.getElementById('agent-bubble');
+    const speechBubble = document.getElementById('speech-bubble');
     const promptInput = document.getElementById('prompt');
     const sendBtn = document.getElementById('send');
 
-    // Canvas setup
-    const CELL_SIZE = 4;
-    let officeWidth, officeHeight;
+    // Character colors (6 diverse characters like original)
+    const CHARACTER_COLORS = ['#e94560', '#4ade80', '#60a5fa', '#fbbf24', '#a855f7', '#f472b6'];
+    const CHARACTER_SKINTONES = ['#ffccaa', '#d4a574', '#8d5524', '#c68642', '#ffdbac', '#e0ac69'];
+    
+    // Agent state
+    let agents = [
+      {
+        id: 1,
+        x: 0,
+        y: 0,
+        state: 'idle', // idle, thinking, working, waiting
+        color: CHARACTER_COLORS[0],
+        skinColor: CHARACTER_SKINTONES[0],
+        toolStatus: '',
+        isWaiting: false,
+        name: 'Agent 1'
+      }
+    ];
+    let eventSource = null;
+    let lastToolStatus = '';
 
+    // Animation frame counter for blinking/waving
+    let frameCount = 0;
+
+    // Resize canvas to fill office
     function resizeCanvas() {
       const office = document.getElementById('office');
-      canvas.width = office.clientWidth;
-      canvas.height = office.clientHeight;
-      officeWidth = Math.floor(canvas.width / CELL_SIZE);
-      officeHeight = Math.floor(canvas.height / CELL_SIZE);
-      render();
+      const rect = office.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
     }
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-
-    // Agent state
-    let agent = {
-      x: 10,
-      y: 10,
-      state: 'idle', // idle, walking, typing, reading, waiting
-      direction: 'down',
-      color: '#e94560',
-      toolStatus: '',
-      isWaiting: false
-    };
-
-    // Simple pixel office rendering
-    function render() {
-      // Clear
-      ctx.fillStyle = '#0f0f1a';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      // Draw floor grid (subtle)
-      ctx.strokeStyle = '#1a1a2e';
-      ctx.lineWidth = 1;
-      for (let x = 0; x < canvas.width; x += CELL_SIZE * 4) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, canvas.height);
-        ctx.stroke();
-      }
-      for (let y = 0; y < canvas.height; y += CELL_SIZE * 4) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(canvas.width, y);
-        ctx.stroke();
-      }
-
-      // Draw desk
-      ctx.fillStyle = '#4a3728';
-      ctx.fillRect(canvas.width / 2 - 20, canvas.height / 2 - 8, 40, 16);
-      ctx.fillStyle = '#5c4433';
-      ctx.fillRect(canvas.width / 2 - 18, canvas.height / 2 - 6, 36, 12);
-
-      // Draw chair
-      ctx.fillStyle = '#e94560';
-      ctx.fillRect(canvas.width / 2 - 6, canvas.height / 2 + 8, 12, 8);
-
-      // Draw agent
-      const ax = agent.x * CELL_SIZE * 4 + canvas.width / 2 - 10;
-      const ay = agent.y * CELL_SIZE * 4 + canvas.height / 2 - 16;
-
+    // Draw character at position
+    function drawCharacter(ctx, x, y, agent, w, h) {
+      const color = agent.color;
+      const skin = agent.skinColor;
+      const centerX = w * x;
+      const centerY = h * y;
+      
+      // Animation bob
+      const bob = Math.sin(frameCount * 0.1) * 2;
+      
       // Body
-      ctx.fillStyle = agent.color;
-      ctx.fillRect(ax, ay, 20, 24);
-
+      ctx.fillStyle = color;
+      ctx.fillRect(centerX - 20, centerY + 10 + bob, 40, 35);
+      
       // Head
-      ctx.fillStyle = '#ffccaa';
-      ctx.fillRect(ax + 4, ay - 8, 12, 12);
-
-      // Eyes (based on state)
+      ctx.fillStyle = skin;
+      ctx.fillRect(centerX - 15, centerY - 20 + bob, 30, 30);
+      
+      // Hair
+      ctx.fillStyle = '#4a3728';
+      ctx.fillRect(centerX - 17, centerY - 25 + bob, 34, 12);
+      
+      // Eyes - with blink animation
+      const isBlinking = frameCount % 180 < 5;
       ctx.fillStyle = '#000';
-      if (agent.state === 'waiting' || agent.isWaiting) {
-        // Closed eyes (sleeping)
-        ctx.fillRect(ax + 6, ay - 2, 3, 1);
-        ctx.fillRect(ax + 11, ay - 2, 3, 1);
-      } else if (agent.state === 'typing' || agent.state === 'reading') {
-        // Looking at screen
-        ctx.fillRect(ax + 6, ay - 3, 2, 2);
-        ctx.fillRect(ax + 12, ay - 3, 2, 2);
+      
+      if (agent.isWaiting) {
+        // Sleeping - ZZZ
+        ctx.font = '10px monospace';
+        ctx.fillText('💤', centerX + 15, centerY - 25 + bob);
+      } else if (agent.state === 'thinking' || agent.toolStatus?.includes('Thinking')) {
+        // Thinking - spiral eyes
+        ctx.font = '14px monospace';
+        ctx.fillText('🌀', centerX - 8, centerY - 5 + bob);
+      } else if (agent.state === 'working' || agent.toolStatus) {
+        // Working - looking at screen
+        ctx.fillRect(centerX - 10, centerY - 8 + bob, 6, 4);
+        ctx.fillRect(centerX + 4, centerY - 8 + bob, 6, 4);
+      } else if (isBlinking) {
+        // Blink
+        ctx.fillRect(centerX - 10, centerY - 5 + bob, 6, 2);
+        ctx.fillRect(centerX + 4, centerY - 5 + bob, 6, 2);
       } else {
-        // Normal eyes
-        ctx.fillRect(ax + 5, ay - 2, 3, 3);
-        ctx.fillRect(ax + 12, ay - 2, 3, 3);
+        // Normal
+        ctx.fillRect(centerX - 10, centerY - 8 + bob, 6, 6);
+        ctx.fillRect(centerX + 4, centerY - 8 + bob, 6, 6);
       }
+      
+      // Tool status text above head
+      if (agent.toolStatus) {
+        ctx.fillStyle = '#fff';
+        ctx.font = '11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(agent.toolStatus.slice(0, 25), centerX, centerY - 40 + bob);
+      }
+    }
 
-      // Tool status
+    // Draw the office
+    function render() {
+      frameCount++;
+      const w = canvas.width;
+      const h = canvas.height;
+      
+      // Floor
+      ctx.fillStyle = '#2d2d44';
+      ctx.fillRect(0, 0, w, h);
+      
+      // Checkered floor tiles
+      const tileSize = 50;
+      for (let x = 0; x < w; x += tileSize) {
+        for (let y = h * 0.4; y < h; y += tileSize) {
+          if ((x/tileSize + (y-h*0.4)/tileSize) % 2 === 0) {
+            ctx.fillStyle = '#353550';
+            ctx.fillRect(x, y, tileSize, tileSize);
+          }
+        }
+      }
+      
+      // Back wall
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, w, h * 0.4);
+      
+      // Wall border
+      ctx.fillStyle = '#e94560';
+      ctx.fillRect(0, h * 0.38, w, 6);
+      
+      // Wall decorations - frame
+      ctx.fillStyle = '#4a3728';
+      ctx.fillRect(50, h * 0.15, 100, 80);
+      ctx.fillStyle = '#1a5';
+      ctx.fillRect(55, h * 0.17, 90, 60);
+      // Landscape in frame
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(55, h * 0.35, 90, 30);
+      ctx.fillStyle = '#60a5fa';
+      ctx.fillRect(55, h * 0.17, 90, 20);
+      
+      // Shelf with books
+      ctx.fillStyle = '#4a3728';
+      ctx.fillRect(200, h * 0.25, 200, 10);
+      // Books
+      const bookColors = ['#e94560', '#4ade80', '#60a5fa', '#fbbf24', '#a855f7'];
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = bookColors[i];
+        ctx.fillRect(205 + i * 18, h * 0.16, 14, 20 + (i % 3) * 5);
+      }
+      
+      // Plant
+      ctx.fillStyle = '#166534';
+      ctx.beginPath();
+      ctx.arc(w - 100, h * 0.38, 35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8b4513';
+      ctx.fillRect(w - 115, h * 0.38, 30, 45);
+      
+      // Desk (center)
+      const deskX = w/2 - 120;
+      const deskY = h * 0.65;
+      ctx.fillStyle = '#5c4433';
+      ctx.fillRect(deskX, deskY, 240, 15); // top
+      ctx.fillRect(deskX, deskY + 15, 240, 60); // front panel
+      
+      // Monitor
+      ctx.fillStyle = '#333';
+      ctx.fillRect(deskX + 60, deskY - 50, 120, 70);
+      ctx.fillStyle = '#1a5';
+      ctx.fillRect(deskX + 65, deskY - 45, 110, 55);
+      // Code on screen
+      ctx.fillStyle = '#0f0';
+      ctx.font = '8px monospace';
+      ctx.fillText('function() {', deskX + 68, deskY - 30);
+      ctx.fillText('  return true;', deskX + 68, deskX + 75 ? deskY - 20 : deskY - 20);
+      ctx.fillStyle = '#444';
+      ctx.fillRect(deskX + 100, deskY - 10, 40, 25); // stand
+      
+      // Keyboard
+      ctx.fillStyle = '#444';
+      ctx.fillRect(deskX + 55, deskY + 20, 80, 20);
+      ctx.fillStyle = '#555';
+      for (let i = 0; i < 8; i++) {
+        ctx.fillRect(deskX + 57 + i * 10, deskY + 22, 8, 6);
+      }
+      
+      // Mouse
+      ctx.fillStyle = '#555';
+      ctx.fillRect(deskX + 145, deskY + 22, 15, 20);
+      
+      // Desk legs
+      ctx.fillStyle = '#333';
+      ctx.fillRect(deskX + 10, deskY + 75, 15, 40);
+      ctx.fillRect(deskX + 215, deskY + 75, 15, 40);
+      
+      // Chair
+      const chairX = w/2 - 40;
+      const chairY = deskY + 70;
+      ctx.fillStyle = '#e94560';
+      ctx.fillRect(chairX, chairY, 80, 15); // seat
+      ctx.fillRect(chairX + 30, chairY - 40, 20, 50); // back
+      ctx.fillStyle = '#333';
+      ctx.fillRect(chairX + 35, chairY + 15, 10, 35); // stem
+      ctx.fillRect(chairX + 15, chairY + 50, 50, 10); // base
+      
+      // Draw all agents
+      agents.forEach(agent => {
+        const agentX = (chairX + 20) / w;
+        const agentY = (chairY - 10) / h;
+        drawCharacter(ctx, agentX, agentY, agent, w, h);
+      });
+      
+      requestAnimationFrame(render);
+    }
+
+    // Update speech bubble
+    function updateSpeechBubble() {
+      const agent = agents[0];
+      
+      if (agent.isWaiting) {
+        speechBubble.textContent = '💭 Waiting for you...';
+        speechBubble.className = 'speech-bubble visible waiting';
+        
+        // Position above agent
+        const w = canvas.width;
+        const h = canvas.height;
+        speechBubble.style.left = (w/2 - 125) + 'px';
+        speechBubble.style.top = (h * 0.25) + 'px';
+        
+      } else if (agent.state === 'thinking' && agent.toolStatus) {
+        speechBubble.textContent = '🤔 ' + agent.toolStatus;
+        speechBubble.className = 'speech-bubble visible thinking';
+        
+        const w = canvas.width;
+        const h = canvas.height;
+        speechBubble.style.left = (w/2 - 125) + 'px';
+        speechBubble.style.top = (h * 0.25) + 'px';
+        
+      } else if (agent.toolStatus && agent.state === 'working') {
+        speechBubble.textContent = '⚡ ' + agent.toolStatus;
+        speechBubble.className = 'speech-bubble visible tool';
+        
+        const w = canvas.width;
+        const h = canvas.height;
+        speechBubble.style.left = (w/2 - 125) + 'px';
+        speechBubble.style.top = (h * 0.25) + 'px';
+        
+      } else {
+        speechBubble.className = 'speech-bubble';
+      }
+      
+      // Tool overlay
       if (agent.toolStatus) {
         toolOverlay.textContent = agent.toolStatus;
         toolOverlay.classList.add('visible');
       } else {
         toolOverlay.classList.remove('visible');
       }
-
-      // Waiting bubble
-      if (agent.isWaiting) {
-        agentBubble.textContent = '💭 Waiting for you...';
-        agentBubble.classList.add('visible');
-      } else {
-        agentBubble.classList.remove('visible');
-      }
-
-      // Animation loop
-      requestAnimationFrame(render);
     }
 
     // SSE connection
     function connect() {
-      const eventSource = new EventSource('/events');
+      console.log('[Pixel Agents] Connecting to SSE...');
+      if (eventSource) eventSource.close();
+      
+      eventSource = new EventSource('/events');
       
       eventSource.onopen = () => {
+        console.log('[Pixel Agents] SSE connected!');
         statusEl.textContent = '● Connected';
         statusEl.className = 'connected';
       };
 
-      eventSource.onerror = () => {
+      eventSource.onerror = (e) => {
+        console.error('[Pixel Agents] SSE error:', e);
         statusEl.textContent = '● Disconnected';
         statusEl.className = 'disconnected';
-        setTimeout(connect, 2000);
+        setTimeout(connect, 3000);
       };
 
       eventSource.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data);
           handleMessage(msg);
-        } catch {}
+        } catch (err) {}
       };
     }
 
     function handleMessage(msg) {
-      console.log('Message:', msg);
-
+      const agent = agents[0];
+      
       switch (msg.type) {
+        case 'connected':
+          console.log('[Pixel Agents] Connected to server!');
+          break;
         case 'agentStatus':
           if (msg.status === 'active') {
-            agent.state = 'typing';
+            agent.state = 'working';
             agent.isWaiting = false;
           } else if (msg.status === 'waiting') {
             agent.state = 'idle';
             agent.isWaiting = true;
+            playSound('done');
           }
           break;
-
+        case 'agentThinking':
+          agent.state = 'thinking';
+          agent.toolStatus = (msg.text || 'Thinking...').slice(0, 40);
+          playSound('thinking');
+          break;
+        case 'agentResponding':
+          agent.state = 'working';
+          agent.toolStatus = (msg.text || 'Writing...').slice(0, 40);
+          break;
         case 'agentToolStart':
-          agent.toolStatus = msg.status;
-          agent.state = 'typing';
+          agent.state = 'working';
+          agent.toolStatus = msg.status || 'Working...';
           break;
-
         case 'agentToolDone':
-          agent.toolStatus = '';
-          break;
-
         case 'agentToolsClear':
           agent.toolStatus = '';
           break;
-
-        case 'connected':
-          console.log('Connected to Pixel Agents server!');
-          break;
       }
+      
+      updateSpeechBubble();
     }
 
     // Send message
-    function sendPrompt() {
+    async function sendPrompt() {
       const text = promptInput.value.trim();
       if (!text) return;
-
-      // For now, we just show it in the tool overlay
-      // In a full implementation, this would POST to the server
-      toolOverlay.textContent = `Sending: ${text.slice(0, 30)}...`;
-      toolOverlay.classList.add('visible');
-
-      promptInput.value = '';
+      
+      const agent = agents[0];
+      agent.state = 'thinking';
+      agent.toolStatus = 'Sending...';
+      updateSpeechBubble();
+      
+      try {
+        const res = await fetch('/prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text })
+        });
+        await res.json();
+        promptInput.value = '';
+      } catch (err) {
+        console.error('[Pixel Agents] Send error:', err);
+        agent.toolStatus = 'Error sending!';
+        updateSpeechBubble();
+      }
     }
 
     sendBtn.addEventListener('click', sendPrompt);
@@ -343,9 +579,14 @@
       if (e.key === 'Enter') sendPrompt();
     });
 
-    // Start
-    connect();
-    render();
+    // Init
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      window.addEventListener('resize', resizeCanvas);
+      connect();
+      render();
+      updateSpeechBubble();
+    });
   </script>
 </body>
 </html>

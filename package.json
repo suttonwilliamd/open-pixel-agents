@@ -3,12 +3,9 @@
   "version": "1.0.0",
   "description": "Pixel art office where your OpenCode agents come to life - standalone server version",
   "main": "server/index.js",
-  "type": "module",
   "scripts": {
-    "start": "node server/index.js",
-    "build": "node server/index.js"
+    "start": "node server/index.js"
   },
-  "dependencies": {},
   "engines": {
     "node": ">=18"
   }
